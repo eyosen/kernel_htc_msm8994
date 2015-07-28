@@ -74,7 +74,7 @@ struct smbchg_chip {
 	struct device			*dev;
 	struct spmi_device		*spmi;
 
-	
+	/* peripheral register address bases */
 	u16				chgr_base;
 	u16				bat_if_base;
 	u16				usb_chgpth_base;
@@ -85,7 +85,7 @@ struct smbchg_chip {
 	int				fake_battery_soc;
 	u8				revision[4];
 
-	
+	/* configuration parameters */
 	int				iterm_ma;
 	int				usb_max_current_ma;
 	int				dc_max_current_ma;
@@ -121,7 +121,7 @@ struct smbchg_chip {
 	struct delayed_work		parallel_en_work;
 	struct dentry			*debug_root;
 
-	
+	/* wipower params */
 	struct ilim_map			wipower_default;
 	struct ilim_map			wipower_pt;
 	struct ilim_map			wipower_div2;
@@ -160,7 +160,7 @@ struct smbchg_chip {
 	bool				usb_ov_det;
 	bool				otg_pulse_skip_en;
 
-	
+	/* jeita and temperature */
 	bool				batt_hot;
 	bool				batt_cold;
 	bool				batt_warm;
@@ -169,7 +169,7 @@ struct smbchg_chip {
 	unsigned int			therm_lvl_sel;
 	unsigned int			*thermal_mitigation;
 
-	
+	/* irqs */
 	int				batt_hot_irq;
 	int				batt_warm_irq;
 	int				batt_cool_irq;
@@ -196,7 +196,7 @@ struct smbchg_chip {
 	int				chg_error_irq;
 	bool				enable_aicl_wake;
 
-	
+	/* psy */
 	struct power_supply		*usb_psy;
 	struct power_supply		batt_psy;
 	struct power_supply		dc_psy;
@@ -3585,7 +3585,11 @@ static void handle_usb_insertion(struct smbchg_chip *chip)
 	char *usb_type_name = "null";
 	u8 reg = 0;
 
-	
+	/*
+	 * There is a problem with USBID conversions on PMI8994 revisions
+	 * 2.0.0. As a workaround, check that the cable is not
+	 * detected as factory test before enabling OTG.
+	 */
 	rc = smbchg_read(chip, &reg, chip->misc_base + IDEV_STS, 1);
 	if (rc < 0)
 		dev_err(chip->dev, "Couldn't read status 5 rc = %d\n", rc);
@@ -4209,7 +4213,11 @@ static int smbchg_hw_init(struct smbchg_chip *chip)
 		}
 	}
 
-	
+	/*
+	 * To disallow source detect and usbin_uv interrupts, set the adapter
+	 * allowance to 9V, so that the audio boost operating in reverse never
+	 * gets detected as a valid input
+	 */
 	rc = smbchg_sec_masked_write(chip,
 			chip->usb_chgpth_base + TR_8OR32B,
 			BUCK_8_16_FREQ_BIT, 0);
@@ -4218,7 +4226,7 @@ static int smbchg_hw_init(struct smbchg_chip *chip)
 		return rc;
 	}
 
-	
+	/* battery missing detection */
 	mask =  BATT_MISSING_ALGO_BIT;
 	reg = chip->bmd_algo_disabled ? BATT_MISSING_ALGO_BIT : 0;
 	if (chip->bmd_pin_src < BPD_TYPE_DEFAULT) {
@@ -4272,7 +4280,7 @@ static int smbchg_hw_init(struct smbchg_chip *chip)
 		}
 	}
 
-	
+	/* DC path current settings */
 	if (chip->dc_psy_type != -EINVAL) {
 		rc = smbchg_set_thermal_limited_dc_current_max(chip,
 						chip->dc_target_current_ma);
@@ -4504,7 +4512,7 @@ static int smb_parse_dt(struct smbchg_chip *chip)
 	OF_PROP_READ(chip, chip->jeita_temp_hard_limit,
 			"jeita-temp-hard-limit", rc, 1);
 
-	
+	/* read boolean configuration properties */
 	chip->use_vfloat_adjustments = of_property_read_bool(node,
 						"qcom,autoadjust-vfloat");
 	chip->bmd_algo_disabled = of_property_read_bool(node,
@@ -4524,11 +4532,11 @@ static int smb_parse_dt(struct smbchg_chip *chip)
 	chip->low_volt_dcin = of_property_read_bool(node,
 					"qcom,low-volt-dcin");
 
-	
+	/* parse the battery missing detection pin source */
 	rc = of_property_read_string(chip->spmi->dev.of_node,
 		"qcom,bmd-pin-src", &bpd);
 	if (rc) {
-		
+		/* Select BAT_THM as default BPD scheme */
 		chip->bmd_pin_src = BPD_TYPE_DEFAULT;
 		rc = 0;
 	} else {
@@ -4540,7 +4548,7 @@ static int smb_parse_dt(struct smbchg_chip *chip)
 		}
 	}
 
-	
+	/* parse the dc power supply configuration */
 	rc = of_property_read_string(node, "qcom,dc-psy-type", &dc_psy_type);
 	if (rc) {
 		chip->dc_psy_type = -EINVAL;
@@ -4569,13 +4577,13 @@ static int smb_parse_dt(struct smbchg_chip *chip)
 	if (chip->dc_psy_type == POWER_SUPPLY_TYPE_WIPOWER)
 		smb_parse_wipower_dt(chip);
 
-	
+	/* read the bms power supply name */
 	rc = of_property_read_string(node, "qcom,bms-psy-name",
 						&chip->bms_psy_name);
 	if (rc)
 		chip->bms_psy_name = NULL;
 
-	
+	/* read the bms power supply name */
 	rc = of_property_read_string(node, "qcom,battery-psy-name",
 						&chip->battery_psy_name);
 	if (rc)

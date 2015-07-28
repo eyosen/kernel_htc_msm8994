@@ -843,7 +843,12 @@ void usb_remove_config(struct usb_composite_dev *cdev,
 	unbind_config(cdev, config);
 }
 
-
+/*
+ * The code in this file is utility code, used to build a gadget driver
+ * from one or more "function" drivers, one or more "configuration"
+ * objects, and a "usb_composite_driver" by gluing them together along
+ * with the relevant device-wide data.
+ */
 
 static void collect_langs(struct usb_gadget_strings **sp, __le16 *buf)
 {
@@ -1133,7 +1138,7 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 
 	switch (ctrl->bRequest) {
 
-	
+	/* we handle all standard USB descriptors */
 	case USB_REQ_GET_DESCRIPTOR:
 		if (ctrl->bRequestType != USB_DIR_IN)
 			goto unknown;
@@ -1171,7 +1176,7 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 			if (!gadget_is_dualspeed(gadget) ||
 			    gadget->speed >= USB_SPEED_SUPER)
 				break;
-			
+			/* FALLTHROUGH */
 		case USB_DT_CONFIG:
 			if (w_length == 4) {
 				pr_info("%s: OS_MAC\n", __func__);
@@ -1221,7 +1226,7 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 		}
 		break;
 
-	
+	/* any number of configs can work */
 	case USB_REQ_SET_CONFIGURATION:
 		if (ctrl->bRequestType != 0)
 			goto unknown;
@@ -1279,7 +1284,7 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 		f = cdev->config->interface[intf];
 		if (!f)
 			break;
-		
+		/* lots of interfaces only need altsetting zero... */
 		value = f->get_alt ? f->get_alt(f, w_index) : 0;
 		if (value < 0)
 			break;
@@ -1380,7 +1385,7 @@ unknown:
 		goto done;
 	}
 
-	
+	/* respond with data transfer before status phase? */
 	if (value >= 0 && value != USB_GADGET_DELAYED_STATUS) {
 		req->length = value;
 		req->zero = value < w_length;
@@ -1397,7 +1402,7 @@ unknown:
 	}
 
 done:
-	
+	/* device either stalls (value < 0) or reports success */
 	return value;
 }
 
@@ -1517,7 +1522,7 @@ int composite_dev_prepare(struct usb_composite_driver *composite,
 	struct usb_gadget *gadget = cdev->gadget;
 	int ret = -ENOMEM;
 
-	
+	/* preallocate control response and buffer */
 	cdev->req = usb_ep_alloc_request(gadget->ep0, GFP_KERNEL);
 	if (!cdev->req)
 		return -ENOMEM;

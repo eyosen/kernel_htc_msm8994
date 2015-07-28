@@ -138,7 +138,7 @@ int kgsl_memfree_find_entry(pid_t pid, unsigned long *gpuaddr,
 	if (ptr < 0)
 		ptr = MEMFREE_ENTRIES - 1;
 
-	
+	/* Walk backwards through the list looking for the last match  */
 	while (ptr != memfree.tail) {
 		struct memfree_entry *entry = &memfree.list[ptr];
 
@@ -371,9 +371,9 @@ kgsl_mem_entry_attach_process(struct kgsl_mem_entry *entry,
 	spin_unlock(&process->mem_lock);
 	if (ret)
 		goto err_put_proc_priv;
-	
+	/* map the memory after unlocking if gpuaddr has been assigned */
 	if (entry->memdesc.gpuaddr) {
-		
+		/* if a secured buffer map it to secure global pagetable */
 		if (kgsl_memdesc_is_secured(&entry->memdesc))
 			pagetable = process->pagetable->mmu->securepagetable;
 		else
@@ -398,7 +398,7 @@ static void kgsl_mem_entry_detach_process(struct kgsl_mem_entry *entry)
 	if (entry == NULL)
 		return;
 
-	
+	/* Unmap here so that below we can call kgsl_mmu_put_gpuaddr */
 	kgsl_mmu_unmap(entry->memdesc.pagetable, &entry->memdesc);
 
 	spin_lock(&entry->priv->mem_lock);
@@ -555,13 +555,13 @@ kgsl_context_destroy(struct kref *kref)
 	write_lock(&device->context_lock);
 	if (context->id != KGSL_CONTEXT_INVALID) {
 
-		
+		/* Clear the timestamps in the memstore during destroy */
 		kgsl_sharedmem_writel(device, &device->memstore,
 			KGSL_MEMSTORE_OFFSET(context->id, soptimestamp), 0);
 		kgsl_sharedmem_writel(device, &device->memstore,
 			KGSL_MEMSTORE_OFFSET(context->id, eoptimestamp), 0);
 
-		
+		/* clear device power constraint */
 		if (context->id == device->pwrctrl.constraint.owner_id) {
 			trace_kgsl_constraint(device,
 				device->pwrctrl.constraint.type,
@@ -753,7 +753,7 @@ static struct kgsl_process_private *kgsl_process_private_new(
 	struct kgsl_process_private *private;
 	pid_t tgid = task_tgid_nr(current);
 
-	
+	/* Search in the process list */
 	list_for_each_entry(private, &kgsl_driver.process_list, list) {
 		if (private->pid == tgid) {
 			if (!kgsl_process_private_get(private))
@@ -762,7 +762,7 @@ static struct kgsl_process_private *kgsl_process_private_new(
 		}
 	}
 
-	
+	/* Create a new object */
 	private = kzalloc(sizeof(struct kgsl_process_private), GFP_KERNEL);
 	if (private == NULL)
 		return ERR_PTR(-ENOMEM);
@@ -779,7 +779,7 @@ static struct kgsl_process_private *kgsl_process_private_new(
 	idr_init(&private->mem_idr);
 	idr_init(&private->syncsource_idr);
 
-	
+	/* Allocate a pagetable for the new process object */
 	if (kgsl_mmu_enabled()) {
 		private->pagetable = kgsl_mmu_getpagetable(&device->mmu, tgid);
 		if (private->pagetable == NULL) {
@@ -2536,7 +2536,10 @@ static int kgsl_setup_dma_buf(struct kgsl_mem_entry *entry,
 	entry->priv_data = meta;
 	entry->memdesc.sg = sg_table->sgl;
 
-	
+	/*
+	 * If this is a new process create the debug directories and add it to
+	 * the process list
+	 */
 
 	entry->memdesc.sglen = 0;
 
@@ -3011,7 +3014,10 @@ _gpumem_alloc(struct kgsl_device_private *dev_priv,
 		return -EOPNOTSUPP;
 	}
 
-	
+	/*
+	 * sync events that are contained by a cmdbatch which has been
+	 * destroyed may have already been removed from the synclist
+	 */
 
 	align = (flags & KGSL_MEMALIGN_MASK) >> KGSL_MEMALIGN_SHIFT;
 	if (align >= ilog2(KGSL_MAX_ALIGN)) {
@@ -3371,7 +3377,12 @@ kgsl_mmap_memstore(struct kgsl_device *device, struct vm_area_struct *vma)
 	int result;
 	unsigned int vma_size = vma->vm_end - vma->vm_start;
 
-	
+	/*
+	 * We allow somebody to create a sync point on their own context.
+	 * This has the effect of delaying a command from submitting until the
+	 * dependent command has cleared.  That said we obviously can't let them
+	 * create a sync point on a future timestamp.
+	 */
 
 	if (vma->vm_flags & VM_WRITE)
 		return -EPERM;
@@ -3788,7 +3799,10 @@ static int kgsl_mmap(struct file *file, struct vm_area_struct *vma)
 	struct kgsl_mem_entry *entry = NULL;
 	struct kgsl_device *device = dev_priv->device;
 
-	
+	/*
+	 * Increase the reference count on the context so it doesn't disappear
+	 * during the lifetime of this command batch
+	 */
 
 	if (vma_offset == device->memstore.gpuaddr)
 		return kgsl_mmap_memstore(device, vma);
@@ -3901,7 +3915,13 @@ static int _register_device(struct kgsl_device *device)
 	int minor, ret;
 	dev_t dev;
 
-	
+	/*
+	 * The SYNC bit is supposed to identify a dummy sync object so warn the
+	 * user if they specified any IBs with it.  A MARKER command can either
+	 * have IBs or not but if the command has 0 IBs it is automatically
+	 * assumed to be a marker.  If none of the above make sure that the user
+	 * specified a sane number of IBs
+	 */
 
 	mutex_lock(&kgsl_driver.devlock);
 	for (minor = 0; minor < KGSL_DEVICE_MAX; minor++) {
@@ -4201,7 +4221,11 @@ static int __init kgsl_core_init(void)
 		goto err;
 	}
 
-	
+	/*
+	 * Flush is defined as (clean | invalidate).  If both bits are set, then
+	 * do a flush, otherwise check for the individual bits and clean or inv
+	 * as requested
+	 */
 
 	kgsl_driver.ptkobj =
 	  kobject_create_and_add("pagetables",
@@ -4224,7 +4248,7 @@ static int __init kgsl_core_init(void)
 
 	kgsl_events_init();
 
-	
+	/* create the memobjs kmem cache */
 	memobjs_cache = KMEM_CACHE(kgsl_memobj_node, 0);
 	if (memobjs_cache == NULL) {
 		KGSL_CORE_ERR("failed to create memobjs_cache");

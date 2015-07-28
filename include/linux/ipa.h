@@ -1332,6 +1332,6 @@ static inline enum ipa_rm_resource_name ipa_get_rm_resource_from_ep(
 	return -EFAULT;
 }
 
-#endif 
+#endif /* CONFIG_IPA*/
 
-#endif 
+#endif /* _IPA_H_ */

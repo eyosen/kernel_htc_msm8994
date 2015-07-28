@@ -161,7 +161,7 @@ static int dload_set(const char *val, struct kernel_param *kp)
 	if (ret)
 		return ret;
 
-	
+	/* If download_mode is not zero or one, ignore. */
 	if (download_mode >> 1) {
 		download_mode = old_val;
 		return -EINVAL;
@@ -312,7 +312,7 @@ static void msm_restart_prepare(char mode, const char *cmd)
 	msm_flush_console();
 	flush_cache_all();
 
-	
+	/*outer_flush_all is not supported by 64bit kernel*/
 #ifndef CONFIG_ARM64
 	outer_flush_all();
 #endif

@@ -91,21 +91,21 @@
 	 (((minor) & 0x0FFF) << 16) |		\
 	 ((step)   & 0xFFFF))
 
-#define MDSS_MDP_HW_REV_100	MDSS_MDP_REV(1, 0, 0) 
-#define MDSS_MDP_HW_REV_101	MDSS_MDP_REV(1, 1, 0) 
-#define MDSS_MDP_HW_REV_101_1	MDSS_MDP_REV(1, 1, 1) 
-#define MDSS_MDP_HW_REV_101_2	MDSS_MDP_REV(1, 1, 2) 
-#define MDSS_MDP_HW_REV_102	MDSS_MDP_REV(1, 2, 0) 
-#define MDSS_MDP_HW_REV_102_1	MDSS_MDP_REV(1, 2, 1) 
-#define MDSS_MDP_HW_REV_103	MDSS_MDP_REV(1, 3, 0) 
-#define MDSS_MDP_HW_REV_103_1	MDSS_MDP_REV(1, 3, 1) 
-#define MDSS_MDP_HW_REV_105	MDSS_MDP_REV(1, 5, 0) 
-#define MDSS_MDP_HW_REV_106	MDSS_MDP_REV(1, 6, 0) 
+#define MDSS_MDP_HW_REV_100	MDSS_MDP_REV(1, 0, 0) /* 8974 v1.0 */
+#define MDSS_MDP_HW_REV_101	MDSS_MDP_REV(1, 1, 0) /* 8x26 v1.0 */
+#define MDSS_MDP_HW_REV_101_1	MDSS_MDP_REV(1, 1, 1) /* 8x26 v2.0, 8926 v1.0 */
+#define MDSS_MDP_HW_REV_101_2	MDSS_MDP_REV(1, 1, 2) /* 8926 v2.0 */
+#define MDSS_MDP_HW_REV_102	MDSS_MDP_REV(1, 2, 0) /* 8974 v2.0 */
+#define MDSS_MDP_HW_REV_102_1	MDSS_MDP_REV(1, 2, 1) /* 8974 v3.0 (Pro) */
+#define MDSS_MDP_HW_REV_103	MDSS_MDP_REV(1, 3, 0) /* 8084 v1.0 */
+#define MDSS_MDP_HW_REV_103_1	MDSS_MDP_REV(1, 3, 1) /* 8084 v1.1 */
+#define MDSS_MDP_HW_REV_105	MDSS_MDP_REV(1, 5, 0) /* 8994 v1.0 */
+#define MDSS_MDP_HW_REV_106	MDSS_MDP_REV(1, 6, 0) /* 8916 v1.0 */
 #define MDSS_MDP_HW_REV_107	MDSS_MDP_REV(1, 7, 0)
-#define MDSS_MDP_HW_REV_108	MDSS_MDP_REV(1, 8, 0) 
-#define MDSS_MDP_HW_REV_109	MDSS_MDP_REV(1, 9, 0) 
-#define MDSS_MDP_HW_REV_110	MDSS_MDP_REV(1, 10, 0) 
-#define MDSS_MDP_HW_REV_200	MDSS_MDP_REV(2, 0, 0) 
+#define MDSS_MDP_HW_REV_108	MDSS_MDP_REV(1, 8, 0) /* 8939 v1.0 */
+#define MDSS_MDP_HW_REV_109	MDSS_MDP_REV(1, 9, 0) /* 8994 v2.0 */
+#define MDSS_MDP_HW_REV_110	MDSS_MDP_REV(1, 10, 0) /* 8992 v1.0 */
+#define MDSS_MDP_HW_REV_200	MDSS_MDP_REV(2, 0, 0) /* 8092 v1.0 */
 
 enum {
 	NOTIFY_UPDATE_INIT,
@@ -267,9 +267,9 @@ struct mdp_img {
 #define MDP_BV_SIZE	3
 
 struct mdp_ccs {
-	int direction;			
-	uint16_t ccs[MDP_CCS_SIZE];	
-	uint16_t bv[MDP_BV_SIZE];	
+	int direction;			/* MDP_CCS_RGB2YUV or YUV2RGB */
+	uint16_t ccs[MDP_CCS_SIZE];	/* 3x3 color coefficients */
+	uint16_t bv[MDP_BV_SIZE];	/* 1x3 bias vector */
 };
 
 struct mdp_csc {
@@ -300,7 +300,7 @@ struct mdp_blit_req {
 	uint32_t alpha;
 	uint32_t transp_mask;
 	uint32_t flags;
-	int sharpening_strength;  
+	int sharpening_strength;  /* -127 <--> 127, default 64 */
 	uint8_t color_space;
 	uint32_t fps;
 };
@@ -423,7 +423,7 @@ struct mdp_qseed_cfg_data {
 #define MDP_CSC_FLAG_YUV_OUT	0x4
 
 struct mdp_csc_cfg {
-	
+	/* flags for enable CSC, toggling RGB,YUV input/output */
 	uint32_t flags;
 	uint32_t csc_mv[9];
 	uint32_t csc_pre_bv[3];
@@ -456,7 +456,7 @@ struct mdp_pa_mem_col_cfg {
 #define MDP_SIX_ZONE_LUT_SIZE		384
 
 struct mdp_pa_v2_data {
-	
+	/* Mask bits for PA features */
 	uint32_t flags;
 	uint32_t global_hue_adj;
 	uint32_t global_sat_adj;
@@ -900,7 +900,7 @@ enum {
 	WB_FORMAT_ARGB_8888,
 	WB_FORMAT_BGRA_8888,
 	WB_FORMAT_BGRX_8888,
-	WB_FORMAT_ARGB_8888_INPUT_ALPHA 
+	WB_FORMAT_ARGB_8888_INPUT_ALPHA /* Need to support */
 };
 
 struct msmfb_mdp_pp {
@@ -1052,4 +1052,4 @@ enum {
 	MDP_CSC_ITU_R_601_FR,
 	MDP_CSC_ITU_R_709,
 };
-#endif 
+#endif /*_UAPI_MSM_MDP_H_*/

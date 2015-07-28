@@ -164,7 +164,7 @@ enum fg_mem_data_index {
 	}						\
 
 static struct fg_mem_setting settings[FG_MEM_SETTING_MAX] = {
-	
+	/*       ID                    Address, Offset, Value*/
 	SETTING(SOFT_COLD,       0x454,   0,      100),
 	SETTING(SOFT_HOT,        0x454,   1,      400),
 	SETTING(HARD_COLD,       0x454,   2,      50),
@@ -192,7 +192,7 @@ static struct fg_mem_setting settings[FG_MEM_SETTING_MAX] = {
 	}						\
 
 static struct fg_mem_data fg_data[FG_DATA_MAX] = {
-	
+	/*       ID           Address, Offset, Length, Value*/
 	DATA(BATT_TEMP,       0x550,   2,      2,     -EINVAL),
 	DATA(OCV,             0x588,   3,      2,     -EINVAL),
 	DATA(VOLTAGE,         0x5CC,   1,      2,     -EINVAL),
@@ -597,7 +597,7 @@ static int fg_config_access(struct fg_chip *chip, bool write,
 	u8 intf_ctl = 0;
 
 	if (otp) {
-		
+		/* Configure OTP access */
 		rc = fg_masked_write(chip, chip->mem_base + OTP_CFG1,
 				0xFF, 0x00, 1);
 		if (rc) {
@@ -633,11 +633,11 @@ static int fg_req_and_wait_access(struct fg_chip *chip, int timeout)
 	}
 
 wait:
-	
+	/* Wait for MEM_AVAIL IRQ. */
 	ret = wait_for_completion_interruptible_timeout(
 			&chip->sram_access_granted,
 			msecs_to_jiffies(timeout));
-	
+	/* If we were interrupted wait again one more time. */
 	if (ret == -ERESTARTSYS && !tried_again) {
 		tried_again = true;
 		goto wait;
@@ -732,7 +732,7 @@ static int fg_sub_mem_read(struct fg_chip *chip, u8 *val, u16 address, int len,
 				chip->mem_base + MEM_INTF_RD_DATA0 + offset,
 				min(len, BUF_LEN - offset));
 
-			
+			/* manually set address to allow continous reads */
 			address += BUF_LEN;
 
 			rc = fg_set_ram_addr(chip, &address);
@@ -841,7 +841,7 @@ static int fg_mem_write(struct fg_chip *chip, u8 *val, u16 address,
 			if (rc)
 				goto out;
 			memcpy(word + offset, wr_data, sublen);
-			
+			/* configure access as burst if more to write */
 			rc = fg_config_access(chip, 1, (len - sublen) > 0, 0);
 			if (rc)
 				goto out;
@@ -1014,7 +1014,7 @@ static int fg_configure_soc(struct fg_chip *chip)
 	atomic_add_return(1, &chip->memif_user_cnt);
 	mutex_unlock(&chip->rw_lock);
 
-	
+	/* Read Battery SOC */
 	rc = fg_mem_read(chip, reg, BATTERY_SOC_REG, 3, BATTERY_SOC_OFFSET, 1);
 	if (rc) {
 		pr_err("Failed to read battery soc rc: %d\n", rc);
@@ -1422,12 +1422,12 @@ static void update_temp_data(struct work_struct *work)
 		}
 
 wait:
-		
+		/* Wait for MEMIF access revoked */
 		ret = wait_for_completion_interruptible_timeout(
 				&chip->sram_access_revoked,
 				msecs_to_jiffies(timeout));
 
-		
+		/* If we were interrupted wait again one more time. */
 		if (ret == -ERESTARTSYS && !tried_again) {
 			tried_again = true;
 			goto wait;
@@ -1438,7 +1438,7 @@ wait:
 		}
 	}
 
-	
+	/* Read FG_DATA_BATT_TEMP now */
 	rc = fg_mem_read(chip, reg, fg_data[0].address,
 		fg_data[0].len, fg_data[0].offset,
 		chip->sw_rbias_ctrl ? 1 : 0);
@@ -2824,7 +2824,7 @@ wait:
 	fg_stay_awake(&chip->profile_wakeup_source);
 	ret = wait_for_completion_interruptible_timeout(&chip->batt_id_avail,
 			msecs_to_jiffies(PROFILE_LOAD_TIMEOUT_MS));
-	
+	/* If we were interrupted wait again one more time. */
 	if (ret == -ERESTARTSYS && !tried_again) {
 		tried_again = true;
 		pr_debug("interrupted, waiting again\n");
@@ -2946,7 +2946,7 @@ wait:
 		goto unlock_and_fail;
 	}
 
-	
+	/* unset the restart bits so the fg doesn't continuously restart */
 	reg = REDO_FIRST_ESTIMATE | RESTART_GO;
 	rc = fg_masked_write(chip, chip->soc_base + SOC_RESTART,
 			reg, 0, 1);
@@ -2985,7 +2985,7 @@ wait:
 	atomic_add_return(1, &chip->memif_user_cnt);
 	mutex_unlock(&chip->rw_lock);
 
-	
+	/* write the battery profile */
 	rc = fg_mem_write(chip, chip->batt_profile, BATT_PROFILE_OFFSET,
 			chip->batt_profile_len, 0, 1);
 	if (rc) {
@@ -2993,7 +2993,7 @@ wait:
 		goto sub_and_fail;
 	}
 
-	
+	/* write the integrity bits and release access */
 	rc = fg_mem_masked_write(chip, PROFILE_INTEGRITY_REG,
 			PROFILE_INTEGRITY_BIT, PROFILE_INTEGRITY_BIT, 0);
 	if (rc) {
@@ -3018,7 +3018,7 @@ wait:
 		goto fail;
 	}
 
-	
+	/* wait for the first estimate to complete */
 	for (tries = 0; tries < MAX_TRIES_FIRST_EST; tries++) {
 		msleep(FIRST_EST_WAIT_MS);
 
@@ -3042,7 +3042,7 @@ wait:
 		pr_err("failed to set no otp reload bit\n");
 		goto fail;
 	}
-	
+	/* unset the restart bits so the fg doesn't continuously restart */
 	reg = REDO_FIRST_ESTIMATE | RESTART_GO;
 	rc = fg_masked_write(chip, chip->soc_base + SOC_RESTART,
 			reg, 0, 1);
@@ -3281,7 +3281,7 @@ static int fg_of_init(struct fg_chip *chip)
 	if (fg_debug_mask & FG_AGING)
 		pr_info("battery aging mode: %d\n", chip->batt_aging_mode);
 
-	
+	/* Get the use-otp-profile property */
 	chip->use_otp_profile = of_property_read_bool(
 			chip->spmi->dev.of_node,
 			"qcom,use-otp-profile");
@@ -3547,14 +3547,14 @@ static int fg_memif_data_open(struct inode *inode, struct file *file)
 		return -EINVAL;
 	}
 
-	
+	/* Per file "transaction" data */
 	trans = kzalloc(sizeof(*trans), GFP_KERNEL);
 	if (!trans) {
 		pr_err("Unable to allocate memory for transaction data\n");
 		return -ENOMEM;
 	}
 
-	
+	/* Allocate log buffer */
 	log = kzalloc(logbufsize, GFP_KERNEL);
 
 	if (!log) {
@@ -3567,7 +3567,7 @@ static int fg_memif_data_open(struct inode *inode, struct file *file)
 	log->wpos = 0;
 	log->len = logbufsize - sizeof(*log);
 
-	
+	/* Allocate data buffer */
 	data_buf = kzalloc(databufsize, GFP_KERNEL);
 
 	if (!data_buf) {
@@ -3638,7 +3638,7 @@ write_next_line_to_log(struct fg_trans *trans, int offset, size_t *pcnt)
 	int items_to_read = min(ARRAY_SIZE(data) - padding, *pcnt);
 	int items_to_log = min(ITEMS_PER_LINE, padding + items_to_read);
 
-	
+	/* Buffer needs enough space for an entire line */
 	if ((log->len - log->wpos) < MAX_LINE_LENGTH)
 		goto done;
 
@@ -3646,26 +3646,26 @@ write_next_line_to_log(struct fg_trans *trans, int offset, size_t *pcnt)
 
 	*pcnt -= items_to_read;
 
-	
+	/* Each line starts with the aligned offset (12-bit address) */
 	cnt = print_to_log(log, "%3.3X ", offset & 0xfff);
 	if (cnt == 0)
 		goto done;
 
-	
+	/* If the offset is unaligned, add padding to right justify items */
 	for (i = 0; i < padding; ++i) {
 		cnt = print_to_log(log, "-- ");
 		if (cnt == 0)
 			goto done;
 	}
 
-	
+	/* Log the data items */
 	for (j = 0; i < items_to_log; ++i, ++j) {
 		cnt = print_to_log(log, "%2.2X ", data[j]);
 		if (cnt == 0)
 			goto done;
 	}
 
-	
+	/* If the last character was a space, then replace it with a newline */
 	if (log->wpos > 0 && log->data[log->wpos - 1] == ' ')
 		log->data[log->wpos - 1] = '\n';
 
@@ -3697,10 +3697,10 @@ static int get_log_data(struct fg_trans *trans)
 		pr_err("dump failed: rc = %d\n", rc);
 		return rc;
 	}
-	
+	/* Reset the log buffer 'pointers' */
 	log->wpos = log->rpos = 0;
 
-	
+	/* Keep reading data until the log is full */
 	do {
 		last_cnt = item_cnt;
 		cnt = write_next_line_to_log(trans, offset, &item_cnt);
@@ -3724,7 +3724,7 @@ static ssize_t fg_memif_dfs_reg_read(struct file *file, char __user *buf,
 	size_t ret;
 	size_t len;
 
-	
+	/* Is the the log buffer empty */
 	if (log->rpos >= log->wpos) {
 		if (get_log_data(trans) <= 0)
 			return 0;
@@ -3738,7 +3738,7 @@ static ssize_t fg_memif_dfs_reg_read(struct file *file, char __user *buf,
 		return -EFAULT;
 	}
 
-	
+	/* 'ret' is the number of bytes not copied */
 	len -= ret;
 
 	*ppos += len;
@@ -3767,7 +3767,7 @@ static ssize_t fg_memif_dfs_reg_write(struct file *file, const char __user *buf,
 	struct fg_trans *trans = file->private_data;
 	u32 offset = trans->offset;
 
-	
+	/* Make a copy of the user data */
 	char *kbuf = kmalloc(count + 1, GFP_KERNEL);
 	if (!kbuf)
 		return -ENOMEM;
@@ -3783,10 +3783,10 @@ static ssize_t fg_memif_dfs_reg_write(struct file *file, const char __user *buf,
 	*ppos += count;
 	kbuf[count] = '\0';
 
-	
+	/* Override the text buffer with the raw data */
 	values = kbuf;
 
-	
+	/* Parse the data in the buffer.  It should be a string of numbers */
 	while (sscanf(kbuf + pos, "%i%n", &data, &bytes_read) == 1) {
 		pos += bytes_read;
 		values[cnt++] = data & 0xff;
@@ -3796,7 +3796,7 @@ static ssize_t fg_memif_dfs_reg_write(struct file *file, const char __user *buf,
 		goto free_buf;
 
 	pr_info("address %x, count %d\n", offset, cnt);
-	
+	/* Perform the write(s) */
 
 	ret = fg_mem_write(trans->chip, values, offset,
 				cnt, 0, 0);
@@ -4216,7 +4216,7 @@ static int fg_probe(struct spmi_device *spmi)
 		goto of_init_fail;
 	}
 
-	
+	/* hold memory access until initialization finishes */
 	atomic_add_return(1, &chip->memif_user_cnt);
 
 	rc = fg_init_irqs(chip);
@@ -4270,7 +4270,7 @@ static int fg_probe(struct spmi_device *spmi)
 		goto power_supply_unregister;
 	}
 
-	
+	/* release memory access if necessary */
 	fg_release_access_if_necessary(chip);
 
 	rc = fg_hw_init(chip);

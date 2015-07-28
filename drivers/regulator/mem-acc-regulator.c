@@ -72,7 +72,7 @@ struct mem_acc_regulator {
 	phys_addr_t		mem_acc_type_addr[MEM_ACC_TYPE_MAX];
 	u32			*mem_acc_type_data;
 
-	
+	/* eFuse parameters */
 	phys_addr_t		efuse_addr;
 	void __iomem		*efuse_base;
 };
@@ -239,7 +239,7 @@ static int mem_acc_regulator_set_voltage(struct regulator_dev *rdev,
 	if (corner == mem_acc_vreg->corner)
 		return 0;
 
-	
+	/* go up or down one level at a time */
 	mutex_lock(&mem_acc_memory_mutex);
 	if (corner > mem_acc_vreg->corner) {
 		for (i = mem_acc_vreg->corner + 1; i <= corner; i++) {
@@ -652,7 +652,7 @@ static int mem_acc_init(struct platform_device *pdev,
 
 	pr_debug("num_corners = %d\n", mem_acc_vreg->num_corners);
 
-	
+	/* Check if at least one valid mem-acc config. is specified */
 	for (i = 0; i < MEMORY_MAX; i++) {
 		if (mem_acc_vreg->mem_acc_supported[i])
 			break;

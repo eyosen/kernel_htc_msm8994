@@ -126,7 +126,7 @@ static void i2c_msm_qup_fifo_calc_size(struct i2c_msm_ctrl *ctrl)
 	u32 reg_data, output_fifo_size, input_fifo_size;
 	struct i2c_msm_xfer_mode_fifo *fifo = &ctrl->xfer.fifo;
 
-	
+	/* Gurad to read fifo size only once. It hard wired and never changes */
 	if (fifo->input_fifo_sz && fifo->output_fifo_sz)
 		return;
 
@@ -811,7 +811,10 @@ static int i2c_msm_blk_rd_xfer_buf(struct i2c_msm_ctrl *ctrl)
 		if (cache_avail_bc < 0)
 			return cache_avail_bc;
 
-		
+		/*
+		 * copy bytes from fifo word to tag.
+		 * @note buf->in_tag.len (max 2bytes) < word_bc (4bytes)
+		 */
 		if (buf->in_tag.len) {
 			int discard_bc = min_t(int, cache_avail_bc,
 							buf->in_tag.len);
@@ -860,14 +863,14 @@ static int i2c_msm_blk_xfer(struct i2c_msm_ctrl *ctrl)
 	if (ret < 0)
 		return ret;
 
-	
+	/* program qup registers */
 	i2c_msm_qup_xfer_init_reset_state(ctrl);
 
 	ret = i2c_msm_qup_state_set(ctrl, QUP_STATE_RUN);
 	if (ret < 0)
 		return ret;
 
-	
+	/* program qup registers which must be set *after* reset */
 	i2c_msm_qup_xfer_init_run_state(ctrl);
 
 	while (i2c_msm_xfer_next_buf(ctrl)) {
@@ -945,7 +948,7 @@ static int i2c_msm_dma_xfer_prepare(struct i2c_msm_ctrl *ctrl)
 			return -EFAULT;
 		}
 
-		
+		/* copy 8 bytes. Only tag.len bytes will be used */
 		*((u64 *)tag_arr_itr_vrtl_addr) =  buf->out_tag.val;
 
 		i2c_msm_dbg(ctrl, MSM_DBG,
@@ -1118,7 +1121,7 @@ static int i2c_msm_dma_xfer_process(struct i2c_msm_ctrl *ctrl)
 		}
 	}
 
-	
+	/* Set the QUP State to Run when completes the txn */
 	ret = i2c_msm_qup_state_set(ctrl, QUP_STATE_RUN);
 	if (ret) {
 		dev_err(ctrl->dev, "transition to run state failed before DMA transaction :%d\n",
@@ -1444,7 +1447,7 @@ static int i2c_msm_clk_path_postponed_register(struct i2c_msm_ctrl *ctrl)
 
 	if (ctrl->rsrcs.clk_path_vote.client_hdl) {
 		if (ctrl->rsrcs.clk_path_vote.reg_err) {
-			
+			/* log a success message if an error msg was logged */
 			ctrl->rsrcs.clk_path_vote.reg_err = false;
 			dev_err(ctrl->dev,
 				"msm_bus_scale_register_client(mstr-id:%d):0x%x (ok)",
@@ -1452,7 +1455,7 @@ static int i2c_msm_clk_path_postponed_register(struct i2c_msm_ctrl *ctrl)
 				ctrl->rsrcs.clk_path_vote.client_hdl);
 		}
 	} else {
-		
+		/* guard to log only one error on multiple failure */
 		if (!ctrl->rsrcs.clk_path_vote.reg_err) {
 			ctrl->rsrcs.clk_path_vote.reg_err = true;
 
@@ -1710,7 +1713,7 @@ static int qup_i2c_recover_bus_busy(struct i2c_msm_ctrl *ctrl)
 
 static int i2c_msm_qup_post_xfer(struct i2c_msm_ctrl *ctrl, int err)
 {
-	
+	/* poll until bus is released */
 	if (i2c_msm_qup_poll_bus_active_unset(ctrl)) {
 		if ((ctrl->xfer.err == I2C_MSM_ERR_ARB_LOST) ||
 		    (ctrl->xfer.err == I2C_MSM_ERR_BUS_ERR)  ||
@@ -1768,7 +1771,13 @@ i2c_msm_qup_choose_mode(struct i2c_msm_ctrl *ctrl)
 
 	return I2C_MSM_XFER_MODE_DMA;
 }
-
+/*
+ * i2c_msm_xfer_calc_timeout: calc maximum xfer time in jiffies
+ *
+ * Basically timeout = (bit_count / frequency) * safety_coefficient.
+ * The safety-coefficient also accounts for debugging delay (mostly from
+ * printk() calls).
+ */
 static void i2c_msm_xfer_calc_timeout(struct i2c_msm_ctrl *ctrl)
 {
 	size_t byte_cnt = ctrl->xfer.rx_cnt + ctrl->xfer.tx_cnt;
@@ -1797,7 +1806,7 @@ static int i2c_msm_xfer_wait_for_completion(struct i2c_msm_ctrl *ctrl,
 		i2c_msm_prof_evnt_add(ctrl, MSM_ERR, I2C_MSM_COMPLT_FL,
 						xfer->timeout, time_left, 0);
 	} else {
-		
+		/* return an error if one detected by ISR */
 		if (xfer->err)
 			ret = -(xfer->err);
 		i2c_msm_prof_evnt_add(ctrl, MSM_DBG, I2C_MSM_COMPLT_OK,
@@ -1934,7 +1943,7 @@ static int i2c_msm_pm_xfer_start(struct i2c_msm_ctrl *ctrl)
 	}
 	i2c_msm_qup_init(ctrl);
 
-	
+	/* Set xfer to active state (efectively enabling our ISR)*/
 	atomic_set(&ctrl->xfer.is_active, 1);
 
 	enable_irq(ctrl->rsrcs.irq);
@@ -1991,7 +2000,7 @@ i2c_msm_frmwrk_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	if (ret)
 		return ret;
 
-	
+	/* init xfer */
 	xfer->msgs         = msgs;
 	xfer->msg_cnt      = num;
 	xfer->mode_id      = I2C_MSM_XFER_MODE_NONE;
@@ -2122,7 +2131,7 @@ static int i2c_msm_dt_to_pdata_populate(struct i2c_msm_ctrl *ctrl,
 					"error Missing '%s' DT entry\n",
 					itr->dt_name);
 
-				
+				/* cont on err to dump all missing entries */
 				if (itr->status == DT_REQ && !err)
 					err = ret;
 			}
@@ -2132,7 +2141,12 @@ static int i2c_msm_dt_to_pdata_populate(struct i2c_msm_ctrl *ctrl,
 	return err;
 }
 
-
+/*
+ * i2c_msm_rsrcs_process_dt: copy data from DT to platform data
+ *
+ * @pdata out parameter
+ * @return zero on success or negative error code
+ */
 static int i2c_msm_rsrcs_process_dt(struct i2c_msm_ctrl *ctrl,
 					struct platform_device *pdev)
 {
@@ -2537,7 +2551,7 @@ static int i2c_msm_probe(struct platform_device *pdev)
 	if (ret)
 		goto clk_err;
 
-	
+	/* vote for clock to enable reading the version number off the HW */
 	i2c_msm_clk_path_vote(ctrl);
 
 	ret = i2c_msm_pm_clk_prepare_enable(ctrl);

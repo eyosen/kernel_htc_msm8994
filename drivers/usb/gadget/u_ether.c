@@ -28,7 +28,26 @@
 #include <linux/cpufreq.h>
 #include "u_ether.h"
 
-
+/*
+ * This component encapsulates the Ethernet link glue needed to provide
+ * one (!) network link through the USB gadget stack, normally "usb0".
+ *
+ * The control and data models are handled by the function driver which
+ * connects to this code; such as CDC Ethernet (ECM or EEM),
+ * "CDC Subset", or RNDIS.  That includes all descriptor and endpoint
+ * management.
+ *
+ * Link level addressing is handled by this component using module
+ * parameters; if no such parameters are provided, random link level
+ * addresses are used.  Each end of the link uses one address.  The
+ * host end address is exported in various ways, and is often recorded
+ * in configuration databases.
+ *
+ * The driver which assembles each configuration using such a link is
+ * responsible for ensuring that each configuration includes at most one
+ * instance of is network link.  (The network layer provides ways for
+ * this single "physical" link to be used by multiple virtual links.)
+ */
 
 #define UETH__VERSION	"29-May-2008"
 
@@ -1182,7 +1201,7 @@ static int eth_stop(struct net_device *net)
 		dev->net->stats.rx_errors, dev->net->stats.tx_errors
 		);
 
-	
+	/* don't change MTU on "live" link (peer won't know) */
 	spin_lock_irqsave(&dev->lock, flags);
 	if (dev->port_usb) {
 		struct gether	*link = dev->port_usb;
@@ -1217,7 +1236,7 @@ static int eth_stop(struct net_device *net)
 	prev_state = dev->state;
 	dev->state = ETH_STOP;
 
-	
+	/* if previous state is eth_start, update cpufreq policy to normal */
 	if (prev_state == ETH_START)
 		for_each_online_cpu(i)
 			cpufreq_update_policy(i);
@@ -1300,7 +1319,7 @@ static int rmnet_ioctl_extended(struct net_device *dev, struct ifreq *ifr)
 		if (netif_running(dev))
 			return -EBUSY;
 
-		
+		/* 16K max */
 		if ((size_t)ext_cmd.u.data > 0x4000)
 			return -EINVAL;
 
@@ -1355,10 +1374,10 @@ static int ether_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 	int		rc = -EFAULT;
 
 	old_opmode = eth_dev->flags;
-	
+	/* Process IOCTL command */
 	switch (cmd) {
-	case RMNET_IOCTL_SET_LLP_ETHERNET:	
-		
+	case RMNET_IOCTL_SET_LLP_ETHERNET:	/*Set Ethernet protocol*/
+		/* Perform Ethernet config only if in IP mode currently*/
 		if (test_bit(RMNET_MODE_LLP_IP, &eth_dev->flags)) {
 			ether_setup(dev);
 			dev->mtu = prev_mtu;
@@ -1372,11 +1391,11 @@ static int ether_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 			rc = 0;
 		break;
 
-	case RMNET_IOCTL_SET_LLP_IP:		
-		
+	case RMNET_IOCTL_SET_LLP_IP:		/* Set RAWIP protocol*/
+		/* Perform IP config only if in Ethernet mode currently*/
 		if (test_bit(RMNET_MODE_LLP_ETH, &eth_dev->flags)) {
-			
-			dev->header_ops = 0;  
+			/* Undo config done in ether_setup() */
+			dev->header_ops = 0;  /* No header */
 			dev->type = ARPHRD_RAWIP;
 			dev->hard_header_len = 0;
 			dev->mtu = prev_mtu;
@@ -1392,7 +1411,7 @@ static int ether_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 			rc = 0;
 		break;
 
-	case RMNET_IOCTL_GET_LLP:	
+	case RMNET_IOCTL_GET_LLP:	/* Get link protocol state */
 		state = eth_dev->flags & (RMNET_MODE_LLP_ETH
 						| RMNET_MODE_LLP_IP);
 		if (copy_to_user(addr, &state, sizeof(state)))
@@ -1400,7 +1419,7 @@ static int ether_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 		rc = 0;
 		break;
 
-	case RMNET_IOCTL_SET_RX_HEADROOM:	
+	case RMNET_IOCTL_SET_RX_HEADROOM:	/* Set RX headroom */
 		if (copy_from_user(&eth_dev->rx_needed_headroom, addr,
 					sizeof(eth_dev->rx_needed_headroom)))
 			break;
@@ -1494,7 +1513,7 @@ struct eth_dev *gether_setup_name(struct usb_gadget *g, u8 ethaddr[ETH_ALEN],
 	skb_queue_head_init(&dev->rx_frames);
 	skb_queue_head_init(&dev->tx_skb_q);
 
-	
+	/* network device setup */
 	dev->net = net;
 	snprintf(net->name, sizeof(net->name), "%s%%d", netname);
 
@@ -1512,7 +1531,7 @@ struct eth_dev *gether_setup_name(struct usb_gadget *g, u8 ethaddr[ETH_ALEN],
 
 	SET_ETHTOOL_OPS(net, &ops);
 
-	
+	/* set operation mode to eth by default */
 	set_bit(RMNET_MODE_LLP_ETH, &dev->flags);
 
 	dev->gadget = g;
@@ -1553,7 +1572,7 @@ void gether_cleanup(struct eth_dev *dev)
 	if (!dev)
 		return;
 
-	
+	/* make sure cpu boost is set to normal again */
 	dev->state = ETH_UNDEFINED;
 	cancel_work_sync(&dev->cpu_policy_w);
 	for_each_online_cpu(i)
@@ -1694,14 +1713,14 @@ struct net_device *gether_connect(struct gether *link)
 		if (netif_running(dev->net) && !wait_for_rx_trigger)
 			eth_start(dev, GFP_ATOMIC);
 
-	
+	/* on error, disable any endpoints  */
 	} else {
 		(void) usb_ep_disable(link->out_ep);
 fail1:
 		(void) usb_ep_disable(link->in_ep);
 	}
 
-	
+	/* caller is responsible for cleanup on error */
 	if (result < 0) {
 fail0:
 		kfree(link->header);
@@ -1751,7 +1770,7 @@ void gether_disconnect(struct gether *link)
 		spin_lock(&dev->req_lock);
 	}
 
-	
+	/* Free rndis header buffer memory */
 	if (!dev->sg_enabled)
 		kfree(link->header);
 	link->header = NULL;
@@ -1785,11 +1804,11 @@ void gether_disconnect(struct gether *link)
 
 	pr_debug("%s(): tx_throttle count= %lu", __func__,
 					dev->tx_throttle);
-	
+	/* reset tx_throttle count */
 	dev->tx_throttle = 0;
 	dev->rx_throttle = 0;
 
-	
+	/* finish forgetting about this USB link episode */
 	dev->header_len = 0;
 	dev->unwrap = NULL;
 	dev->wrap = NULL;
@@ -1847,7 +1866,7 @@ static ssize_t uether_stat_reset(struct file *file,
 	unsigned long flags;
 
 	spin_lock_irqsave(&dev->lock, flags);
-	
+	/* Reset tx_throttle */
 	dev->tx_throttle = 0;
 	dev->rx_throttle = 0;
 	spin_unlock_irqrestore(&dev->lock, flags);

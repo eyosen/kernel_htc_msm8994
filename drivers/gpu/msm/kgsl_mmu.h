@@ -405,6 +405,10 @@ kgsl_mmu_pagetable_get_ptbase(struct kgsl_pagetable *pagetable)
 	return 0;
 }
 
-
+/*
+ * Static inline functions of MMU that simply call the SMMU specific
+ * function using a function pointer. These functions can be thought
+ * of as wrappers around the actual function
+ */
 
 #endif /* __KGSL_MMU_H */

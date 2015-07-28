@@ -468,7 +468,7 @@ bool ecm_qc_get_skip_ep_config(void)
 }
 /*-------------------------------------------------------------------------*/
 
-
+/* high speed support: */
 
 static void ecm_qc_notify_complete(struct usb_ep *ep, struct usb_request *req)
 {
@@ -558,7 +558,7 @@ invalid:
 	/* device either stalls (value < 0) or reports success */
 	return value;
 }
-
+/*-------------------------------------------------------------------------*/
 
 static int ecm_qc_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 {

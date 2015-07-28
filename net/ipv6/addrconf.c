@@ -171,7 +171,7 @@ static struct ipv6_devconf ipv6_devconf __read_mostly = {
 #endif
 	.accept_ra_rt_table	= 0,
 	.proxy_ndp		= 0,
-	.accept_source_route	= 0,	
+	.accept_source_route	= 0,	/* we do not accept RH0 by default. */
 	.disable_ipv6		= 0,
 	.accept_dad		= 1,
 	.accept_ra_prefix_route = 1,
@@ -1904,7 +1904,7 @@ out:
 	return rt;
 }
 
-
+/* Nobody refers to this device, we may destroy it. */
 
 static void addrconf_add_mroute(struct net_device *dev)
 {
@@ -3883,7 +3883,7 @@ static int inet6_rtm_getaddr(struct sk_buff *in_skb, struct nlmsghdr *nlh)
 	err = inet6_fill_ifaddr(skb, ifa, NETLINK_CB(in_skb).portid,
 				nlh->nlmsg_seq, RTM_NEWADDR, 0);
 	if (err < 0) {
-		
+		/* -EMSGSIZE implies BUG in inet6_netconf_msgsize_devconf() */
 		WARN_ON(err == -EMSGSIZE);
 		kfree_skb(skb);
 		goto errout_ifa;
@@ -3907,7 +3907,7 @@ static void inet6_ifa_notify(int event, struct inet6_ifaddr *ifa)
 
 	err = inet6_fill_ifaddr(skb, ifa, 0, 0, event, 0);
 	if (err < 0) {
-		
+		/* -EMSGSIZE implies BUG in inet6_netconf_msgsize_devconf() */
 		WARN_ON(err == -EMSGSIZE);
 		kfree_skb(skb);
 		goto errout;
@@ -4055,7 +4055,9 @@ static int inet6_fill_ifla6_attrs(struct sk_buff *skb, struct inet6_dev *idev)
 		goto nla_put_failure;
 	ipv6_store_devconf(&idev->cnf, nla_data(nla), nla_len(nla));
 
-	
+	/*
+	 *	Validation checks ([ADDRCONF], page 19)
+	 */
 
 	nla = nla_reserve(skb, IFLA_INET6_STATS, IPSTATS_MIB_MAX * sizeof(u64));
 	if (nla == NULL)
@@ -4336,7 +4338,7 @@ static void inet6_prefix_notify(int event, struct inet6_dev *idev,
 
 	err = inet6_fill_prefix(skb, idev, pinfo, 0, 0, event, 0);
 	if (err < 0) {
-		
+		/* -EMSGSIZE implies BUG in inet6_ifaddr_msgsize() */
 		WARN_ON(err == -EMSGSIZE);
 		kfree_skb(skb);
 		goto errout;
@@ -4742,7 +4744,7 @@ static struct addrconf_sysctl_table
 			.proc_handler	= proc_dointvec,
 		},
 		{
-			
+			/* sentinel */
 		}
 	},
 };
@@ -4760,7 +4762,7 @@ static int __addrconf_sysctl_register(struct net *net, char *dev_name,
 
 	for (i = 0; t->addrconf_vars[i].data; i++) {
 		t->addrconf_vars[i].data += (char *)p - (char *)&ipv6_devconf;
-		t->addrconf_vars[i].extra1 = idev; 
+		t->addrconf_vars[i].extra1 = idev; /* embedded; no ref */
 		t->addrconf_vars[i].extra2 = net;
 	}
 
@@ -4822,7 +4824,7 @@ static int __net_init addrconf_init_net(struct net *net)
 	if (dflt == NULL)
 		goto err_alloc_dflt;
 
-	
+	/* these will be inherited by all namespaces */
 	dflt->autoconf = ipv6_defaults.autoconf;
 	dflt->disable_ipv6 = ipv6_defaults.disable_ipv6;
 
@@ -4915,7 +4917,7 @@ int __init addrconf_init(void)
 	if (err < 0)
 		goto errout;
 
-	
+	/* Only the first call to __rtnl_register can fail */
 	__rtnl_register(PF_INET6, RTM_NEWADDR, inet6_rtm_newaddr, NULL, NULL);
 	__rtnl_register(PF_INET6, RTM_DELADDR, inet6_rtm_deladdr, NULL, NULL);
 	__rtnl_register(PF_INET6, RTM_GETADDR, inet6_rtm_getaddr,
@@ -4955,7 +4957,7 @@ void addrconf_cleanup(void)
 
 	__rtnl_af_unregister(&inet6_ops);
 
-	
+	/* clean dev list */
 	for_each_netdev(&init_net, dev) {
 		if (__in6_dev_get(dev) == NULL)
 			continue;

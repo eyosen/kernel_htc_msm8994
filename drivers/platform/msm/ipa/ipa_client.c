@@ -70,7 +70,7 @@ int ipa_disable_data_path(u32 clnt_hdl)
 		res = ipa_cfg_ep_holb(clnt_hdl, &holb_cfg);
 	}
 
-	
+	/* On IPA 2.0, disable HOLB */
 	if (IPA_CLIENT_IS_CONS(ep->client)) {
 		memset(&ep_cfg_ctrl, 0 , sizeof(struct ipa_ep_cfg_ctrl));
 		ep_cfg_ctrl.ipa_ep_suspend = true;
@@ -92,7 +92,7 @@ static int ipa_connect_configure_sps(const struct ipa_connect_params *in,
 {
 	int result = -EFAULT;
 
-	
+	/* Default Config */
 	ep->ep_hdl = sps_alloc_endpoint();
 
 	if (ep->ep_hdl == NULL) {
@@ -107,7 +107,7 @@ static int ipa_connect_configure_sps(const struct ipa_connect_params *in,
 		return -EFAULT;
 	}
 
-	
+	/* Specific Config */
 	if (IPA_CLIENT_IS_CONS(in->client)) {
 		ep->connect.mode = SPS_MODE_SRC;
 		ep->connect.destination =
@@ -278,7 +278,7 @@ int ipa_connect(const struct ipa_connect_params *in, struct ipa_sps_params *sps,
 		ep->connect.event_thresh = IPA_USB_EVENT_THRESHOLD;
 	else
 		ep->connect.event_thresh = IPA_EVENT_THRESHOLD;
-	ep->connect.options = SPS_O_AUTO_ENABLE;    
+	ep->connect.options = SPS_O_AUTO_ENABLE;    /* BAM-to-BAM */
 
 	result = ipa_sps_connect_safe(ep->ep_hdl, &ep->connect, in->client);
 	if (result) {

@@ -27,7 +27,7 @@
 #include "u_bam_data.h"
 
 #define BAM_DATA_RX_Q_SIZE	128
-#define BAM_DATA_MUX_RX_REQ_SIZE  2048   
+#define BAM_DATA_MUX_RX_REQ_SIZE  2048   /* Must be 1KB aligned */
 #define BAM_DATA_PENDING_LIMIT	220
 
 #define SYS_BAM_RX_PKT_FLOW_CTRL_SUPPORT	1
@@ -57,9 +57,9 @@ module_param(bam_data_mux_rx_req_size, uint, S_IRUGO | S_IWUSR);
 #define MSM_VENDOR_ID			BIT(16)
 
 struct rndis_data_ch_info {
-	
+	/* this provides downlink (device->host i.e host) side configuration*/
 	u32 dl_max_transfer_size;
-	
+	/* this provides uplink (host->device i.e device) side configuration */
 	u32 ul_max_transfer_size;
 	u32 ul_max_packets_number;
 	bool ul_aggregation_enable;
@@ -94,7 +94,7 @@ struct bam_data_ch_info {
 	enum transport_type			trans;
 	struct usb_bam_connect_ipa_params	ipa_params;
 
-	
+	/* UL workaround parameters */
 	struct sys2ipa_sw_data	ul_params;
 	struct list_head	rx_idle;
 	struct sk_buff_head	rx_skb_q;
@@ -111,7 +111,7 @@ struct bam_data_ch_info {
 	unsigned int		rx_flow_control_disable;
 	unsigned int		rx_flow_control_enable;
 	unsigned int		rx_flow_control_triggered;
-	
+	/* used for RNDIS/ECM network inteface based design */
 	atomic_t		is_net_interface_up;
 	bool			tx_req_dequeued;
 };
@@ -389,7 +389,7 @@ static void bam_data_epout_complete(struct usb_ep *ep, struct usb_request *req)
 		break;
 	case -ECONNRESET:
 	case -ESHUTDOWN:
-		
+		/* cable disconnection */
 		spin_lock_irqsave(&port->port_lock, flags);
 		bam_data_free_skb_to_pool(port, skb);
 		d->freed_rx_reqs++;
@@ -660,14 +660,14 @@ static int bam_data_peer_reset_cb(void *param)
 
 	pr_debug("%s: reset by peer\n", __func__);
 
-	
+	/* Reset BAM */
 	ret = usb_bam_a2_reset(0);
 	if (ret) {
 		pr_err("%s: BAM reset failed %d\n", __func__, ret);
 		return ret;
 	}
 
-	
+	/* Unregister the peer reset callback */
 	usb_bam_register_peer_reset_cb(NULL, NULL);
 
 	return 0;
@@ -1120,7 +1120,12 @@ static void bam2bam_data_connect_work(struct work_struct *w)
 		d->tx_req->udc_priv = sps_params;
 	}
 
-	
+	/*
+	 * Disabling RNDIS network adaptor disable/enable performs
+	 * USB IPA disconect and connect respectively. This particular
+	 * check makes sure that when we re-enable USB eps are not
+	 * re-renabled.
+	*/
 	if (d->trans == USB_GADGET_XPORT_BAM2BAM_IPA &&
 		(d->func_type == USB_FUNC_RNDIS ||
 		d->func_type == USB_FUNC_ECM)) {
@@ -1129,11 +1134,11 @@ static void bam2bam_data_connect_work(struct work_struct *w)
 		return;
 	}
 
-	
+	/* queue in & out requests */
 	bam_data_start_rx_transfers(d, port);
 	bam_data_start_endless_tx(port);
 
-	
+	/* Register for peer reset callback if USB_GADGET_XPORT_BAM2BAM */
 	if (d->trans != USB_GADGET_XPORT_BAM2BAM_IPA) {
 		usb_bam_register_peer_reset_cb(bam_data_peer_reset_cb, port);
 
@@ -1162,7 +1167,7 @@ void bam_data_start_rx_tx(u8 port_num)
 
 	pr_debug("%s: Triggered: starting tx, rx", __func__);
 
-	
+	/* queue in & out requests */
 	port = bam2bam_data_ports[port_num];
 	if (!port) {
 		pr_err("%s: port is NULL, can't start tx, rx", __func__);
@@ -1190,7 +1195,7 @@ void bam_data_start_rx_tx(u8 port_num)
 
 	spin_unlock_irqrestore(&port->port_lock, flags);
 
-	
+	/* queue in & out requests */
 	pr_debug("%s: Starting rx", __func__);
 	bam_data_start_rx_transfers(d, port);
 
@@ -1344,7 +1349,7 @@ void bam_data_disconnect(struct data_port *gr, enum function_type func,
 			}
 			spin_lock_irqsave(&port->port_lock, flags);
 
-			
+			/* Only for SYS2BAM mode related UL workaround */
 			if (d->trans == USB_GADGET_XPORT_BAM2BAM_IPA &&
 				d->src_pipe_type == USB_BAM_PIPE_SYS2BAM) {
 

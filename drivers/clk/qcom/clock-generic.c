@@ -511,7 +511,7 @@ struct clk_ops clk_ops_slave_div = {
 	.list_registers = div_clk_list_registers,
 };
 
-
+/* ==================== Mux clock ==================== */
 
 long parent_round_rate(struct clk *c, unsigned long rate)
 {
@@ -545,7 +545,7 @@ static struct clk *ext_get_parent(struct clk *c)
 static enum handoff ext_handoff(struct clk *c)
 {
 	c->rate = clk_get_rate(c->parent);
-	
+	/* Similar reasoning applied in div_handoff, see comment there. */
 	return HANDOFF_DISABLED_CLK;
 }
 
@@ -736,7 +736,7 @@ static int mux_div_clk_set_rate(struct clk *c, unsigned long rate)
 	if (rc)
 		goto err_pre_reparent;
 
-	
+	/* Set divider and mux src atomically */
 	rc = __set_src_div(md, new_parent, new_div);
 	if (rc)
 		goto err_set_src_div;
@@ -747,7 +747,7 @@ static int mux_div_clk_set_rate(struct clk *c, unsigned long rate)
 	return 0;
 
 err_set_src_div:
-	
+	/* Not switching to new_parent, so disable it */
 	__clk_post_reparent(c, new_parent, &flags);
 err_pre_reparent:
 	rc = clk_set_rate(old_parent, old_prate);

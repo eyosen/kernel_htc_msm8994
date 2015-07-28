@@ -256,7 +256,7 @@ struct mipi_panel_info {
 };
 
 struct edp_panel_info {
-	char frame_rate;	
+	char frame_rate;	/* fps */
 };
 
 enum dynamic_fps_update {
@@ -274,7 +274,7 @@ enum lvds_mode {
 
 struct lvds_panel_info {
 	enum lvds_mode channel_mode;
-	
+	/* Channel swap in dual mode */
 	char channel_swap;
 };
 
@@ -335,7 +335,7 @@ struct mdss_panel_info {
 	u32 out_format;
 	u32 rst_seq[MDSS_DSI_RST_SEQ_LEN];
 	u32 rst_seq_len;
-	u32 vic; 
+	u32 vic; /* video identification code */
 	struct mdss_rect roi;
 	int pwm_pmic_gpio;
 	int pwm_lpg_chan;
@@ -405,7 +405,7 @@ struct mdss_panel_info {
 	bool even_roi;
 	bool skip_first_pinctl;
 
-	
+	/* debugfs structure for the panel */
 	struct mdss_panel_debugfs_info *debugfs_info;
 };
 
@@ -538,4 +538,4 @@ static inline void mdss_panel_debugfs_cleanup(
 static inline void mdss_panel_debugfsinfo_to_panelinfo(
 			struct mdss_panel_info *panel_info) { };
 #endif
-#endif 
+#endif /* MDSS_PANEL_H */

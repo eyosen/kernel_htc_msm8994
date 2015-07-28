@@ -850,7 +850,11 @@ int kgsl_cma_alloc_coherent(struct kgsl_device *device,
 	if (result)
 		goto err;
 
-	
+	/*
+	 * The sglist might be comprised of mixed blocks of memory depending
+	 * on how many 64K pages were allocated.  This means we have to do math
+	 * to find the actual 4K page to map in user space
+	 */
 
 	KGSL_STATS_ADD(size, kgsl_driver.stats.coherent,
 		       kgsl_driver.stats.coherent_max);
@@ -913,7 +917,7 @@ int kgsl_cma_alloc_secure(struct kgsl_device *device,
 	if (size == 0)
 		return -EINVAL;
 
-	
+	/* Align size to 1M boundaries */
 	size = ALIGN(size, SZ_1M);
 
 	memdesc->size = size;
@@ -941,12 +945,12 @@ int kgsl_cma_alloc_secure(struct kgsl_device *device,
 	if (result != 0)
 		goto err;
 
-	
+	/* Set the private bit to indicate that we've secured this */
 	SetPagePrivate(sg_page(memdesc->sg));
 
 	memdesc->priv |= KGSL_MEMDESC_TZ_LOCKED;
 
-	
+	/* Record statistics */
 	KGSL_STATS_ADD(size, kgsl_driver.stats.secure,
 	       kgsl_driver.stats.secure_max);
 err:

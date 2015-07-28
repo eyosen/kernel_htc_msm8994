@@ -841,7 +841,12 @@ done:
 	kgsl_mem_entry_put(entry);
 	return ret;
 }
-
+/*
+ * The DRAW_INDX opcode sends a draw initator which starts a draw operation in
+ * the GPU, so this is the point where all the registers and buffers become
+ * "valid".  The DRAW_INDX may also have an index buffer pointer that should be
+ * frozen with the others
+ */
 
 /*
  * adreno_ib_create_object_list() - Find all the memory objects in IB

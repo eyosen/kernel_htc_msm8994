@@ -60,7 +60,7 @@ static void _track_context(struct adreno_dispatcher_cmdqueue *cmdqueue,
 
 	for (i = 0; i < ACTIVE_CONTEXT_LIST_MAX; i++) {
 
-		
+		/* If the new ID matches the slot update the expire time */
 		if (list[i].id == id) {
 			list[i].jiffies = jiffies + msecs_to_jiffies(500);
 			updated = true;
@@ -68,7 +68,7 @@ static void _track_context(struct adreno_dispatcher_cmdqueue *cmdqueue,
 			continue;
 		}
 
-		
+		/* Remember and skip empty slots */
 		if ((list[i].id == 0) ||
 			time_after(jiffies, list[i].jiffies)) {
 			empty = i;
@@ -77,7 +77,7 @@ static void _track_context(struct adreno_dispatcher_cmdqueue *cmdqueue,
 
 		count++;
 
-		
+		/* Remember the oldest active entry */
 		if (oldest == -1 || time_before(list[i].jiffies, age)) {
 			age = list[i].jiffies;
 			oldest = i;
@@ -148,7 +148,7 @@ static int fault_detect_read_compare(struct kgsl_device *device)
 	int i, ret = 0;
 	unsigned int ts;
 
-	
+	/* Check to see if the device is idle - if so report no hang */
 	if (_isidle(device) == true)
 		ret = 1;
 
@@ -292,7 +292,7 @@ static inline int adreno_dispatcher_requeue_cmdbatch(
 	if (kgsl_context_detached(&drawctxt->base) ||
 		kgsl_context_invalid(&drawctxt->base)) {
 		spin_unlock(&drawctxt->lock);
-		
+		/* get rid of this cmdbatch since the context is bad */
 		kgsl_cmdbatch_destroy(cmdbatch);
 		return -EINVAL;
 	}
@@ -358,7 +358,7 @@ static int sendcmd(struct adreno_device *adreno_dev,
 
 	if (dispatcher->inflight == 1 &&
 			!test_bit(ADRENO_DISPATCHER_POWER, &dispatcher->priv)) {
-		
+		/* Time to make the donuts.  Turn on the GPU */
 		ret = kgsl_active_count_get(device);
 		if (ret) {
 			dispatcher->inflight--;
@@ -664,7 +664,10 @@ int adreno_dispatcher_queue_cmd(struct adreno_device *adreno_dev,
 		}
 	}
 
-	
+	/*
+	 * On the first command, if the submission was successful, then read the
+	 * fault registers.  If it failed then turn off the GPU. Sad face.
+	 */
 
 	while (drawctxt->queued >= _context_cmdqueue_size) {
 		trace_adreno_drawctxt_sleep(drawctxt);
@@ -1395,7 +1398,12 @@ static int adreno_dispatch_process_cmdqueue(struct adreno_device *adreno_dev,
 		if (time_is_after_jiffies(cmdbatch->expires))
 			break;
 
-		
+		/*
+		 * adreno_context_get_cmdbatch returns -EAGAIN if the current
+		 * cmdbatch has pending sync points so no more to do here.
+		 * When the sync points are satisfied then the context will get
+		 * reqeueued
+		 */
 
 		pr_fault(device, cmdbatch,
 			"gpu timeout ctx %d ts %d\n",
@@ -1494,7 +1502,7 @@ static void adreno_dispatcher_fault_timer(unsigned long data)
 	struct kgsl_device *device = &adreno_dev->dev;
 	struct adreno_dispatcher *dispatcher = &adreno_dev->dispatcher;
 
-	
+	/* Leave if the user decided to turn off fast hang detection */
 	if (adreno_dev->fast_hang_detect == 0)
 		return;
 

@@ -242,7 +242,7 @@ static void lmh_read_and_update(struct lmh_driver_data *lmh_dat)
 	static struct lmh_sensor_packet payload;
 	struct scm_desc desc_arg;
 	struct {
-		
+		/* TZ is 32-bit right now */
 		uint32_t addr;
 		uint32_t size;
 	} cmd_buf;

@@ -141,8 +141,8 @@ static struct usb_cdc_union_desc ncm_union_desc = {
 	.bLength =		sizeof(ncm_union_desc),
 	.bDescriptorType =	USB_DT_CS_INTERFACE,
 	.bDescriptorSubType =	USB_CDC_UNION_TYPE,
-	
-	
+	/* .bMasterInterface0 =	DYNAMIC */
+	/* .bSlaveInterface0 =	DYNAMIC */
 };
 
 #ifndef CONFIG_USB_ANDROID_ECM
@@ -151,9 +151,9 @@ static struct usb_cdc_ether_desc ecm_desc = {
 	.bDescriptorType =	USB_DT_CS_INTERFACE,
 	.bDescriptorSubType =	USB_CDC_ETHERNET_TYPE,
 
-	
-	
-	.bmEthernetStatistics =	cpu_to_le32(0), 
+	/* this descriptor actually adds value, surprise! */
+	/* .iMACAddress = DYNAMIC */
+	.bmEthernetStatistics =	cpu_to_le32(0), /* no statistics */
 	.wMaxSegmentSize =	cpu_to_le16(ETH_FRAME_LEN),
 	.wNumberMCFilters =	cpu_to_le16(0),
 	.bNumberPowerFilters =	0,
@@ -1103,7 +1103,7 @@ static void ncm_disable(struct usb_function *f)
 	}
 }
 
-
+/* high speed support: */
 
 static void ncm_open(struct gether *geth)
 {
@@ -1129,7 +1129,14 @@ static void ncm_close(struct gether *geth)
 	spin_unlock(&ncm->lock);
 }
 
-
+/*
+ * Here are options for NCM Datagram Pointer table (NDP) parser.
+ * There are 2 different formats: NDP16 and NDP32 in the spec (ch. 3),
+ * in NDP16 offsets and sizes fields are 1 16bit word wide,
+ * in NDP32 -- 2 16bit words wide. Also signatures are different.
+ * To make the parser code the same, put the differences in the structure,
+ * and switch pointers to the structures when the format is changed.
+ */
 
 static int
 ncm_bind(struct usb_configuration *c, struct usb_function *f)
@@ -1139,7 +1146,7 @@ ncm_bind(struct usb_configuration *c, struct usb_function *f)
 	int			status;
 	struct usb_ep		*ep;
 
-	
+	/* allocate instance-specific interface IDs */
 	status = usb_interface_id(c, f);
 	if (status < 0)
 		goto fail;
@@ -1226,7 +1233,7 @@ fail:
 		usb_ep_free_request(ncm->notify, ncm->notify_req);
 	}
 
-	
+	/* we might as well release our claims on endpoints */
 	if (ncm->notify)
 		ncm->notify->driver_data = NULL;
 	if (ncm->port.out_ep)
@@ -1280,12 +1287,12 @@ int ncm_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN],
 		ncm_iad_desc.iFunction = ncm_string_defs[STRING_IAD_IDX].id;
 	}
 
-	
+	/* allocate and initialize one new instance */
 	ncm = kzalloc(sizeof *ncm, GFP_KERNEL);
 	if (!ncm)
 		return -ENOMEM;
 
-	
+	/* export host's Ethernet address in CDC format */
 	snprintf(ncm->ethaddr, sizeof ncm->ethaddr, "%pm", ethaddr);
 	ncm_string_defs[STRING_MAC_IDX].s = ncm->ethaddr;
 
@@ -1296,7 +1303,7 @@ int ncm_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN],
 
 	ncm->port.func.name = "cdc_network";
 	ncm->port.func.strings = ncm_strings;
-	
+	/* descriptors are per-instance copies */
 	ncm->port.func.bind = ncm_bind;
 	ncm->port.func.unbind = ncm_unbind;
 	ncm->port.func.set_alt = ncm_set_alt;

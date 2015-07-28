@@ -159,7 +159,7 @@ static uint32_t mc_find_cont_wsm_addr(struct mc_instance *instance, void *uaddr,
 
 	mutex_lock(&ctx.bufs_lock);
 
-	
+	/* search for the given handle in the buffers list */
 	list_for_each_entry(buffer, &ctx.cont_bufs, list) {
 		if (buffer->uaddr == uaddr && buffer->len == len) {
 			*addr = buffer->addr;
@@ -167,7 +167,7 @@ static uint32_t mc_find_cont_wsm_addr(struct mc_instance *instance, void *uaddr,
 		}
 	}
 
-	
+	/* Coundn't find the buffer */
 	ret = -EINVAL;
 
 found:
@@ -247,7 +247,7 @@ static uint32_t mc_find_cont_wsm(struct mc_instance *instance, uint32_t handle,
 
 	mutex_lock(&ctx.bufs_lock);
 
-	
+	/* search for the given handle in the buffers list */
 	list_for_each_entry(buffer, &ctx.cont_bufs, list) {
 		if (buffer->handle == handle) {
 			if (mc_check_owner_fd(buffer->instance, fd)) {
@@ -260,7 +260,7 @@ static uint32_t mc_find_cont_wsm(struct mc_instance *instance, uint32_t handle,
 		}
 	}
 
-	
+	/* Couldn't find the buffer */
 	ret = -EINVAL;
 
 found:
@@ -447,7 +447,7 @@ static int __lock_buffer(struct mc_instance *instance, uint32_t handle)
 	}
 
 	mutex_lock(&ctx.bufs_lock);
-	
+	/* search for the given handle in the buffers list */
 	list_for_each_entry(buffer, &ctx.cont_bufs, list) {
 		if (buffer->handle == handle) {
 			atomic_inc(&buffer->usage);
@@ -510,9 +510,9 @@ int mc_register_wsm_mmu(struct mc_instance *instance,
 		return -EINVAL;
 	}
 
-	
+	/* set response */
 	*handle = table->handle;
-	
+	/* WARNING: daemon shouldn't know this either, but live with it */
 	if (is_daemon(instance))
 		*phys = table->phys;
 	else
@@ -553,9 +553,9 @@ static int mc_lock_handle(struct mc_instance *instance, uint32_t handle)
 	mutex_lock(&instance->lock);
 	ret = mc_lock_mmu_table(instance, handle);
 
-	
+	/* Handle was not a MMU table but a cont buffer */
 	if (ret == -EINVAL) {
-		
+		/* Call the non locking variant! */
 		ret = __lock_buffer(instance, handle);
 	}
 
@@ -579,9 +579,9 @@ static int mc_unlock_handle(struct mc_instance *instance, uint32_t handle)
 	mutex_lock(&instance->lock);
 	ret = mc_free_mmu_table(instance, handle);
 
-	
+	/* Not a MMU table, then it must be a buffer */
 	if (ret == -EINVAL) {
-		
+		/* Call the non locking variant! */
 		ret = __free_buffer(instance, handle, true);
 	}
 	mutex_unlock(&instance->lock);
@@ -773,7 +773,7 @@ static long mc_fd_user_ioctl(struct file *file, unsigned int cmd,
 		if (copy_from_user(&map, uarg, sizeof(map)))
 			return -EFAULT;
 
-		
+		/* Setup the WSM buffer structure! */
 		if (mc_get_buffer(instance, &buffer, map.len))
 			return -EFAULT;
 
@@ -791,7 +791,7 @@ static long mc_fd_user_ioctl(struct file *file, unsigned int cmd,
 		ret = -ENOIOCTLCMD;
 		break;
 
-	} 
+	} /* end switch(cmd) */
 
 #ifdef MC_MEM_TRACES
 	mobicore_log_read();
@@ -923,10 +923,10 @@ static long mc_fd_admin_ioctl(struct file *file, unsigned int cmd,
 		break;
 	}
 
-	
+	/* The rest is handled commonly by user IOCTL */
 	default:
 		ret = mc_fd_user_ioctl(file, cmd, arg);
-	} 
+	} /* end switch(cmd) */
 
 #ifdef MC_MEM_TRACES
 	mobicore_log_read();
@@ -944,10 +944,10 @@ static ssize_t mc_fd_read(struct file *file, char *buffer, size_t buffer_len,
 	if (WARN(!instance, "No instance data available"))
 		return -EFAULT;
 
-	
+	/* avoid debug output on non-error, because this is call quite often */
 	MCDRV_DBG_VERBOSE(mcd, "enter");
 
-	
+	/* only the MobiCore Daemon is allowed to call this function */
 	if (WARN_ON(!is_daemon(instance))) {
 		MCDRV_DBG_ERROR(mcd, "caller not MobiCore Daemon");
 		return -EPERM;
@@ -969,13 +969,13 @@ static ssize_t mc_fd_read(struct file *file, char *buffer, size_t buffer_len,
 				  ssiq_counter, ctx.evt_counter);
 
 		if (ssiq_counter != ctx.evt_counter) {
-			
+			/* read data and exit loop without error */
 			ctx.evt_counter = ssiq_counter;
 			ret = 0;
 			break;
 		}
 
-		
+		/* end loop if non-blocking */
 		if (file->f_flags & O_NONBLOCK) {
 			MCDRV_DBG_ERROR(mcd, "non-blocking read");
 			return -EAGAIN;
@@ -987,7 +987,7 @@ static ssize_t mc_fd_read(struct file *file, char *buffer, size_t buffer_len,
 		}
 	}
 
-	
+	/* read data and exit loop */
 	ret = copy_to_user(buffer, &ctx.evt_counter, sizeof(unsigned int));
 
 	if (ret != 0) {
@@ -1021,24 +1021,24 @@ static ssize_t mc_fd_write(struct file *file, const char __user *buffer,
 			size_t buffer_len, loff_t *x)
 {
 	uint32_t cpu_new;
-	
+	/* we only consider one digit */
 	char buf[2];
 	struct mc_instance *instance = get_instance(file);
 
 	if (WARN(!instance, "No instance data available"))
 		return -EFAULT;
 
-	
+	/* Invalid data, nothing to do */
 	if (buffer_len < 1)
 		return -EINVAL;
 
-	
+	/* Invalid data, nothing to do */
 	if (copy_from_user(buf, buffer, min(sizeof(buf), buffer_len)))
 		return -EFAULT;
 
 	if (buf[0] == 'n') {
 		mc_nsiq();
-	
+	/* If it's a digit then switch cores */
 	} else if ((buf[0] >= '0') && (buf[0] <= '9')) {
 		cpu_new = buf[0] - '0';
 		if (cpu_new <= 8) {
@@ -1093,7 +1093,7 @@ static int mc_fd_user_open(struct inode *inode, struct file *file)
 	if (instance == NULL)
 		return -ENOMEM;
 
-	
+	/* store instance data reference */
 	file->private_data = instance;
 
 	return 0;
@@ -1132,7 +1132,7 @@ static int mc_fd_release(struct inode *inode, struct file *file)
 	if (WARN(!instance, "No instance data available"))
 		return -EFAULT;
 
-	
+	/* check if daemon closes us. */
 	if (is_daemon(instance)) {
 		MCDRV_DBG_WARN(mcd, "MobiCore Daemon died");
 		ctx.daemon_inst = NULL;
@@ -1208,7 +1208,7 @@ static int create_devices(void)
 
 	MCDRV_DBG_VERBOSE(mcd, "%s: dev %d", "mobicore", MAJOR(mc_dev_admin));
 
-	
+	/* First the ADMIN node */
 	ret = cdev_add(&mc_admin_cdev,  mc_dev_admin, 1);
 	if (ret != 0) {
 		MCDRV_DBG_ERROR(mcd, "admin device register failed");
@@ -1218,7 +1218,7 @@ static int create_devices(void)
 	device_create(mc_device_class, NULL, mc_dev_admin, NULL,
 		      MC_ADMIN_DEVNODE);
 
-	
+	/* Then the user node */
 
 	ret = cdev_add(&mc_user_cdev, mc_dev_user, 1);
 	if (ret != 0) {
@@ -1255,14 +1255,14 @@ static int __init mobicore_init(void)
 #ifdef MOBICORE_COMPONENT_BUILD_TAG
 	dev_info(mcd, "MobiCore %s\n", MOBICORE_COMPONENT_BUILD_TAG);
 #endif
-	
+	/* Hardware does not support ARM TrustZone -> Cannot continue! */
 	if (!has_security_extensions()) {
 		MCDRV_DBG_ERROR(mcd,
 				"Hardware doesn't support ARM TrustZone!");
 		return -ENODEV;
 	}
 
-	
+	/* Running in secure mode -> Cannot load the driver! */
 	if (is_secure_mode()) {
 		MCDRV_DBG_ERROR(mcd, "Running in secure MODE!");
 		return -ENODEV;
@@ -1274,10 +1274,10 @@ static int __init mobicore_init(void)
 
 	init_completion(&ctx.isr_comp);
 
-	
+	/* initialize event counter for signaling of an IRQ to zero */
 	atomic_set(&ctx.isr_counter, 0);
 
-	
+	/* set up S-SIQ interrupt handler ************************/
 	ret = request_irq(MC_INTR_SSIQ, mc_ssiq_isr, IRQF_TRIGGER_RISING,
 			MC_ADMIN_DEVNODE, &ctx);
 	if (ret != 0) {

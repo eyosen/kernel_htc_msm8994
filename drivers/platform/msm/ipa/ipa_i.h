@@ -320,7 +320,7 @@ struct ipa_ep_context {
 	struct ipa_wlan_stats wstats;
 	u32 wdi_state;
 
-	
+	/* sys MUST be the last element of this struct */
 	struct ipa_sys_context *sys;
 };
 

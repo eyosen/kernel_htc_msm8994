@@ -112,7 +112,7 @@ static int handle_indication_req(void *req_h, void *req)
 	rc = qmi_send_resp_from_cb(ipa_svc_handle, curr_conn, req_h,
 			&ipa_indication_reg_resp_desc, &resp, sizeof(resp));
 	qmi_indication_fin = true;
-	
+	/* check if need sending indication to modem */
 	if (qmi_modem_init_fin)	{
 		IPAWANDBG("send indication to modem (%d)\n",
 		qmi_modem_init_fin);
@@ -165,7 +165,7 @@ static int handle_install_filter_rule_req(void *req_h, void *req)
 		resp.filter_handle_list_valid = false;
 	}
 
-	
+	/* construct UL filter rules response to Modem*/
 	for (i = 0; i < resp.filter_handle_list_len; i++) {
 		resp.filter_handle_list[i].filter_spec_identifier =
 			rule_req->filter_spec_list[i].filter_spec_identifier;
@@ -682,7 +682,7 @@ static void ipa_q6_clnt_svc_arrive(struct work_struct *work)
 	int rc;
 	struct ipa_master_driver_init_complt_ind_msg_v01 ind;
 
-	
+	/* Create a Local client port for QMI communication */
 	ipa_q6_clnt = qmi_handle_create(ipa_q6_clnt_notify, NULL);
 	if (!ipa_q6_clnt) {
 		IPAWANERR("QMI client handle alloc failed\n");
@@ -777,7 +777,7 @@ static void ipa_qmi_service_init_worker(struct work_struct *work)
 {
 	int rc;
 
-	
+	/* Initialize QMI-service*/
 	IPAWANDBG("IPA A7 QMI init OK :>>>>\n");
 
 	
@@ -810,7 +810,7 @@ static void ipa_qmi_service_init_worker(struct work_struct *work)
 		goto destroy_qmi_handle;
 	}
 
-	
+	/* Initialize QMI-client */
 
 	ipa_clnt_req_workqueue = create_singlethread_workqueue("clnt_req");
 	if (!ipa_clnt_req_workqueue) {
@@ -832,7 +832,7 @@ static void ipa_qmi_service_init_worker(struct work_struct *work)
 		goto destroy_clnt_resp_wq;
 	}
 
-	
+	/* get Q6 service and start send modem-initial to Q6 */
 	IPAWANDBG("wait service available\n");
 	return;
 
@@ -892,9 +892,9 @@ void ipa_qmi_service_exit(void)
 			ipa_svc_handle, ret);
 	}
 
-	
+	/* qmi-client */
 
-	
+	/* Unregister from events */
 	ret = qmi_svc_event_notifier_unregister(IPA_Q6_SERVICE_SVC_ID,
 				IPA_Q6_SVC_VERS,
 				IPA_Q6_SERVICE_INS_ID, &ipa_q6_clnt_nb);
@@ -903,7 +903,7 @@ void ipa_qmi_service_exit(void)
 		"Error qmi_svc_event_notifier_unregister service %d, ret=%d\n",
 		IPA_Q6_SERVICE_SVC_ID, ret);
 
-	
+	/* Release client handle */
 	ipa_q6_clnt_svc_exit(0);
 
 	if (ipa_clnt_req_workqueue) {

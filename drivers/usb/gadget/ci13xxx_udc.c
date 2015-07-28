@@ -191,7 +191,7 @@ static int hw_device_init(void __iomem *base)
 {
 	u32 reg;
 
-	
+	/* bank is a module variable */
 	hw_bank.abs = base;
 
 	hw_bank.cap = hw_bank.abs;
@@ -276,21 +276,21 @@ static int hw_device_state(u32 dma)
 		hw_cwrite(CAP_ENDPTLISTADDR, ~0, dma);
 
 
-		
+		/* Set BIT(31) to enable AHB2AHB Bypass functionality */
 		if (udc->udc_driver->flags & CI13XXX_ENABLE_AHB2AHB_BYPASS) {
 			hw_awrite(ABS_AHBMODE, AHB2AHB_BYPASS, AHB2AHB_BYPASS);
 			pr_debug("%s(): ByPass Mode is enabled. AHBMODE:%x\n",
 					__func__, hw_aread(ABS_AHBMODE, ~0));
 		}
 
-		
+		/* interrupt, error, port change, reset, sleep/suspend */
 		hw_cwrite(CAP_USBINTR, ~0,
 			     USBi_UI|USBi_UEI|USBi_PCI|USBi_URI|USBi_SLI);
 		hw_cwrite(CAP_USBCMD, USBCMD_RS, USBCMD_RS);
 	} else {
 		hw_cwrite(CAP_USBCMD, USBCMD_RS, 0);
 		hw_cwrite(CAP_USBINTR, ~0, 0);
-		
+		/* Clear BIT(31) to disable AHB2AHB Bypass functionality */
 		if (udc->udc_driver->flags & CI13XXX_ENABLE_AHB2AHB_BYPASS) {
 			hw_awrite(ABS_AHBMODE, AHB2AHB_BYPASS, 0);
 			pr_debug("%s(): ByPass Mode is disabled. AHBMODE:%x\n",
@@ -439,7 +439,7 @@ static int hw_ep_set_halt(int num, int dir, int value)
 		mask_xs = dir ? ENDPTCTRL_TXS : ENDPTCTRL_RXS;
 		mask_xr = dir ? ENDPTCTRL_TXR : ENDPTCTRL_RXR;
 
-		
+		/* data toggle - reserved for EP0 but it's in ESS */
 		hw_cwrite(addr, mask_xs|mask_xr, value ? mask_xs : mask_xr);
 
 	} while (value != hw_ep_get_halt(num, dir));
@@ -602,7 +602,7 @@ static ssize_t show_device(struct device *dev, struct device_attribute *attr,
 		       gadget->speed);
 	n += scnprintf(buf + n, PAGE_SIZE - n, "max_speed         = %d\n",
 		       gadget->max_speed);
-	
+	/* TODO: Scheduled for removal in 3.8. */
 	n += scnprintf(buf + n, PAGE_SIZE - n, "is_dualspeed      = %d\n",
 		       gadget_is_dualspeed(gadget));
 	n += scnprintf(buf + n, PAGE_SIZE - n, "is_otg            = %d\n",
@@ -683,7 +683,7 @@ static int allow_dbg_print(u8 addr)
 {
 	int dir, num;
 
-	
+	/* allow bus wide events */
 	if (addr == 0xff)
 		return 1;
 
@@ -1538,7 +1538,7 @@ static int _hardware_enqueue(struct ci13xxx_ep *mEp, struct ci13xxx_req *mReq)
 
 	trace("%p, %p", mEp, mReq);
 
-	
+	/* don't queue twice */
 	if (mReq->req.status == -EALREADY)
 		return -EALREADY;
 
@@ -1839,7 +1839,10 @@ static void release_ep_request(struct ci13xxx_ep  *mEp,
 
 	unsigned val;
 
-	
+	/* MSM Specific: updating the request as required for
+	 * SPS mode. Enable MSM DMA engine acording
+	 * to the UDC private data in the request.
+	 */
 	if (CI13XX_REQ_VENDOR_ID(mReq->req.udc_priv) == MSM_VENDOR_ID) {
 		if (mReq->req.udc_priv & MSM_SPS_MODE) {
 			val = hw_cread(CAP_ENDPTPIPEID +
@@ -2517,7 +2520,7 @@ static int ep_enable(struct usb_ep *ep,
 		(mEp->ep.maxpacket << ffs_nr(QH_MAX_PKT)) & QH_MAX_PKT;
 	mEp->qh.ptr->td.next |= TD_TERMINATE;   
 
-	
+	/* clean speculative fetches on req->ptr->token */
 	mb();
 
 	if (mEp->num)
@@ -2542,7 +2545,7 @@ static int ep_disable(struct usb_ep *ep)
 
 	spin_lock_irqsave(mEp->lock, flags);
 
-	
+	/* only internal SW should enable ctrl endpts */
 
 	direction = mEp->dir;
 	do {
@@ -2669,7 +2672,7 @@ static int ep_queue(struct usb_ep *ep, struct usb_request *req,
 		}
 	}
 
-	
+	/* first nuke then test link, e.g. previous status has not sent */
 	if (!list_empty(&mReq->queue)) {
 		retval = -EBUSY;
 		err("request already in queue");
@@ -2701,7 +2704,7 @@ static int ep_queue(struct usb_ep *ep, struct usb_request *req,
 
 	dbg_queue(_usb_addr(mEp), req, retval);
 
-	
+	/* push request */
 	mReq->req.status = -EINPROGRESS;
 	mReq->req.actual = 0;
 
@@ -2712,7 +2715,7 @@ static int ep_queue(struct usb_ep *ep, struct usb_request *req,
 	}
 
 	if (udc->suspended) {
-		
+		/* Remote Wakeup */
 		if (!udc->gadget.remote_wakeup) {
 
 			dev_dbg(mEp->device,
@@ -2778,7 +2781,7 @@ static int ep_dequeue(struct usb_ep *ep, struct usb_request *req)
 		hw_ep_flush(mEp->num, mEp->dir);
 	}
 
-	
+	/* pop request */
 	list_del_init(&mReq->queue);
 	if (mReq->map) {
 		dma_unmap_single(mEp->device, mReq->req.dma, mReq->req.length,
@@ -2827,7 +2830,7 @@ static int ep_set_halt(struct usb_ep *ep, int value)
 	spin_lock_irqsave(mEp->lock, flags);
 
 #ifndef STALL_IN
-	
+	/* g_file_storage MS compliant but g_zero fails chapter 9 compliance */
 	if (value && mEp->type == USB_ENDPOINT_XFER_BULK && mEp->dir == TX &&
 		!list_empty(&mEp->qh.queue) &&
 		!is_sps_req(list_entry(mEp->qh.queue.next, struct ci13xxx_req,
@@ -3039,7 +3042,7 @@ static int ci13xxx_start(struct usb_gadget *gadget,
 	udc->status = usb_ep_alloc_request(&udc->ep0in.ep, GFP_KERNEL);
 	if (!udc->status)
 		return -ENOMEM;
-	udc->status_buf = kzalloc(2, GFP_KERNEL); 
+	udc->status_buf = kzalloc(2, GFP_KERNEL); /* for GET_STATUS */
 	if (!udc->status_buf) {
 		usb_ep_free_request(&udc->ep0in.ep, udc->status);
 		return -ENOMEM;
@@ -3047,7 +3050,7 @@ static int ci13xxx_start(struct usb_gadget *gadget,
 	spin_lock_irqsave(udc->lock, flags);
 
 	udc->gadget.ep0 = &udc->ep0in.ep;
-	
+	/* bind gadget */
 	driver->driver.bus     = NULL;
 	udc->gadget.dev.driver = &driver->driver;
 
@@ -3157,7 +3160,7 @@ static irqreturn_t udc_irq(void)
 		isr_statistics.hndl.idx &= ISR_MASK;
 		isr_statistics.hndl.cnt++;
 
-		
+		/* order defines priority - do NOT change it */
 		if (USBi_URI & intr) {
 			isr_statistics.uri++;
 			if (!hw_cread(CAP_PORTSC, PORTSC_PR))
@@ -3231,7 +3234,7 @@ static int udc_probe(struct ci13xxx_udc_driver *driver, struct device *dev,
 		udc->gadget.is_otg       = 0;
 	udc->gadget.name         = driver->name;
 
-	
+	/* alloc resources */
 	udc->qh_pool = dma_pool_create("ci13xxx_qh", dev,
 				       sizeof(struct ci13xxx_qh),
 				       64, CI13XXX_PAGE_SIZE);
@@ -3288,7 +3291,7 @@ static int udc_probe(struct ci13xxx_udc_driver *driver, struct device *dev,
 			else
 				memset(mEp->qh.ptr, 0, sizeof(*mEp->qh.ptr));
 
-			
+			/* skip ep0 out and in endpoints  */
 			if (i == 0)
 				continue;
 
